@@ -6,15 +6,41 @@ import { firebaseConfig } from './config';
 const EMAIL_KEY = "email";
 const PASSWORD_KEY = "password";
 let trackStatusBarItem: vscode.StatusBarItem;
+let userCred: firebase.auth.UserCredential;
+let tracking: boolean = false;
 
 async function connect(email: string, password: string): Promise<firebase.auth.UserCredential> {
-	return firebase.auth().signInWithEmailAndPassword(email, password).then(cred => {
+	try {
+		let cred = await firebase.auth().signInWithEmailAndPassword(email, password);
 		vscode.window.showInformationMessage('Connected to firebase');
 		return cred;
-	}).catch(error => {
+	} catch (error) {
 		vscode.window.showErrorMessage(error.message);
 		throw error;
-	});
+	};
+}
+
+async function startTracking() {
+	tracking = true;
+	trackStatusBarItem.text = `$(eye) tracking enabled`;
+	trackStatusBarItem.show();
+	vscode.window.showInformationMessage("Start tracking");	
+
+}
+
+async function stopTracking() {
+	tracking = false;
+	trackStatusBarItem.text = `$(eye-closed) tracking disabled`;
+	trackStatusBarItem.show();
+	vscode.window.showInformationMessage("Stop tracking");	
+}
+
+async function toggleTracking() {
+	if (tracking) {
+		await stopTracking();
+	} else {
+		await startTracking();
+	}
 }
 
 function hasCredentials(state: vscode.Memento): boolean {
@@ -60,7 +86,7 @@ export function activate(context: vscode.ExtensionContext) {
 	console.log('Congratulations, your extension "trackme" is now active!');
 	let app = firebase.initializeApp(firebaseConfig);
 	let state = context.globalState;
-	
+
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
@@ -73,13 +99,13 @@ export function activate(context: vscode.ExtensionContext) {
 		let email = state.get(EMAIL_KEY, "");
 		let password = state.get(PASSWORD_KEY, "");
 		// Display a message box to the user
-		connect(email, password).then(_ => {
-			vscode.window.showInformationMessage("Start tracking");
-		}).catch(error => {
+		try {
+			userCred = await connect(email, password);
+			startTracking();
+		} catch(error) {		
 			vscode.window.showErrorMessage("Failed to start tracking");
-		});
+		};
 	});
-
 	context.subscriptions.push(disposable);
 
 	// Credentials
@@ -90,6 +116,14 @@ export function activate(context: vscode.ExtensionContext) {
 	let resetCred = vscode.commands.registerCommand('trackme.reset', async () => {
 		await resetCredentials(state);
 	});
+
+	const trackToggleCommandId = 'trackme.toggle';
+	context.subscriptions.push(vscode.commands.registerCommand(trackToggleCommandId, async () => {
+		await toggleTracking();
+	}));
+	trackStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+	trackStatusBarItem.command = trackToggleCommandId;
+	context.subscriptions.push(trackStatusBarItem);
 
 }
 
