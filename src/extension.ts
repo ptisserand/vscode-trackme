@@ -9,6 +9,7 @@ let trackStatusBarItem: vscode.StatusBarItem;
 let userCred: firebase.auth.UserCredential;
 let tracking: boolean = false;
 
+let tracker_event: { [id: string] : vscode.Disposable; } = {};
 async function connect(email: string, password: string): Promise<firebase.auth.UserCredential> {
 	try {
 		let cred = await firebase.auth().signInWithEmailAndPassword(email, password);
@@ -25,14 +26,28 @@ async function startTracking() {
 	trackStatusBarItem.text = `$(eye) tracking enabled`;
 	trackStatusBarItem.show();
 	vscode.window.showInformationMessage("Start tracking");	
+	
+	tracker_event['changeActiveTextEditor'] = vscode.window.onDidChangeActiveTextEditor(event => {
+		console.log('TextEditor changed... :' + event?.document.fileName);
+	});
 
+	tracker_event['startDebug'] = vscode.debug.onDidStartDebugSession(event => {
+		console.log("Debug session " + event.name + " started");
+	});
+
+	tracker_event['terminateDebug'] = vscode.debug.onDidTerminateDebugSession(event => {
+		console.log("Debug session " + event.name + " terminate");
+	});
 }
 
 async function stopTracking() {
 	tracking = false;
+	tracker_event['changeActiveTextEditor'].dispose();
+	tracker_event['startDebug'].dispose();
+	tracker_event['terminateDebug'].dispose();
 	trackStatusBarItem.text = `$(eye-closed) tracking disabled`;
 	trackStatusBarItem.show();
-	vscode.window.showInformationMessage("Stop tracking");	
+	vscode.window.showInformationMessage("Stop tracking");
 }
 
 async function toggleTracking() {
@@ -124,7 +139,6 @@ export function activate(context: vscode.ExtensionContext) {
 	trackStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
 	trackStatusBarItem.command = trackToggleCommandId;
 	context.subscriptions.push(trackStatusBarItem);
-
 }
 
 // this method is called when your extension is deactivated
