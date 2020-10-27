@@ -1,5 +1,6 @@
 import * as firebase from 'firebase/app';
 import 'firebase/auth';
+import 'firebase/firestore';
 import * as vscode from 'vscode';
 import { firebaseConfig } from './config';
 
@@ -8,8 +9,13 @@ const PASSWORD_KEY = "password";
 let trackStatusBarItem: vscode.StatusBarItem;
 let userCred: firebase.auth.UserCredential;
 let tracking: boolean = false;
+let events_collection: firebase.firestore.CollectionReference;
+let db: firebase.firestore.Firestore;
+
+// var db = firebase.firestore();
 
 let tracker_event: { [id: string] : vscode.Disposable; } = {};
+
 async function connect(email: string, password: string): Promise<firebase.auth.UserCredential> {
 	try {
 		let cred = await firebase.auth().signInWithEmailAndPassword(email, password);
@@ -21,6 +27,15 @@ async function connect(email: string, password: string): Promise<firebase.auth.U
 	};
 }
 
+async function sendEvent(event: any) {
+	try {
+		event.timestamp = firebase.firestore.FieldValue.serverTimestamp();
+		events_collection.add(event);
+	} catch(error) {
+		vscode.window.showErrorMessage("Error sending event: ", error);
+	}
+}
+
 async function startTracking() {
 	tracking = true;
 	trackStatusBarItem.text = `$(eye) tracking enabled`;
@@ -29,6 +44,11 @@ async function startTracking() {
 	
 	tracker_event['changeActiveTextEditor'] = vscode.window.onDidChangeActiveTextEditor(event => {
 		console.log('TextEditor changed... :' + event?.document.fileName);
+		let evt = {
+			type: "textEvent",
+			filename: event?.document.fileName,
+		};
+		sendEvent(evt);
 	});
 
 	tracker_event['startDebug'] = vscode.debug.onDidStartDebugSession(event => {
@@ -100,6 +120,8 @@ export function activate(context: vscode.ExtensionContext) {
 	// This line of code will only be executed once when your extension is activated
 	console.log('Congratulations, your extension "trackme" is now active!');
 	let app = firebase.initializeApp(firebaseConfig);
+	// initialize firestore
+	db = firebase.firestore(app);
 	let state = context.globalState;
 
 	// The command has been defined in the package.json file
@@ -116,6 +138,7 @@ export function activate(context: vscode.ExtensionContext) {
 		// Display a message box to the user
 		try {
 			userCred = await connect(email, password);
+			events_collection = db.collection('users').doc(userCred!.user!.uid).collection('events');
 			startTracking();
 		} catch(error) {		
 			vscode.window.showErrorMessage("Failed to start tracking");
